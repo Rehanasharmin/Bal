@@ -12,11 +12,12 @@ jobs:
       run: |
         # Install dependencies
         sudo apt update
-        sudo apt install -y wget xvfb libxcb-randr0-dev libxdo-dev libxfixes-dev libxcb-shape0-dev libxcb-xfixes0-dev
+        sudo apt install -y wget unzip xvfb libxcb-randr0-dev libxdo-dev libxfixes-dev libxcb-shape0-dev libxcb-xfixes0-dev
         
-        # Download and install RustDesk
+        # Download and extract RustDesk
         wget https://github.com/rustdesk/rustdesk-server/releases/download/1.1.9/rustdesk-server-linux-amd64.zip
-        unzip rustdesk-server-linux-amd64.zip
+        unzip rustdesk-server-linux-amd64.zip -d rustdesk-server
+        cd rustdesk-server
         chmod +x hbbr hbbs
 
         # Start RustDesk services
@@ -26,6 +27,7 @@ jobs:
 
     - name: Setup Cloudflare Tunnel
       run: |
+        cd rustdesk-server
         # Install cloudflared
         wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
         chmod +x cloudflared
