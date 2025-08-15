@@ -34,19 +34,22 @@ jobs:
 
     - name: Setup Cloudflare Tunnel
       run: |
-        # Download cloudflared to proper location
+        # Download cloudflared
         cd ~
         wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
         chmod +x cloudflared-linux-amd64
         
-        # Create tunnel (from RustDesk directory)
+        # Create simple domain name (no hyphens)
+        TUNNEL_NAME=rustdesk$(openssl rand -hex 3)
+        
+        # Start tunnel
         cd $GITHUB_WORKSPACE/rustdesk-server/amd64
-        nohup ~/cloudflared-linux-amd64 tunnel --url tcp://localhost:21116 --hostname rustdesk-$(openssl rand -hex 4).trycloudflare.com > tunnel.log 2>&1 &
+        nohup ~/cloudflared-linux-amd64 tunnel --url tcp://localhost:21116 --hostname ${TUNNEL_NAME}.trycloudflare.com > tunnel.log 2>&1 &
         sleep 15
 
-        # Get tunnel URL
-        TUNNEL_URL=$(grep -o "https://[a-z0-9-]*\.trycloudflare\.com" tunnel.log)
-        echo "TUNNEL_URL=${TUNNEL_URL#https://}" >> $GITHUB_ENV
+        # Get clean tunnel URL
+        echo "TUNNEL_URL=${TUNNEL_NAME}.trycloudflare.com" >> $GITHUB_ENV
+        echo "FULL_CONNECTION_STRING=${TUNNEL_NAME}.trycloudflare.com:21116" >> $GITHUB_ENV
 
     - name: Display Connection Info
       run: |
@@ -54,14 +57,17 @@ jobs:
         echo "🖥️ RUSTDESK CONNECTION INSTRUCTIONS"
         echo "🔑 Your Remote ID: ${{ env.REMOTE_ID }}"
         echo "🌐 Tunnel Address: ${{ env.TUNNEL_URL }}"
+        echo "🔌 Full Connection: ${{ env.FULL_CONNECTION_STRING }}"
         echo ""
         echo "IN YOUR RUSTDESK CLIENT:"
         echo "1. Go to Settings → Network"
-        echo "2. Set both ID Server and Relay Server to:"
-        echo "   ${{ env.TUNNEL_URL }}"
-        echo "3. Connect using Remote ID above"
+        echo "2. Set BOTH fields to: ${{ env.TUNNEL_URL }}"
+        echo "3. Click OK and restart RustDesk"
+        echo "4. Connect using Remote ID above"
         echo ""
-        echo "First connection may take 1-2 minutes"
+        echo "If connection fails:"
+        echo "- Wait 1-2 minutes"
+        echo "- Try again with: ${{ env.FULL_CONNECTION_STRING }}"
         echo "=========================================="
         
         # Keep alive
