@@ -8,49 +8,68 @@ jobs:
     timeout-minutes: 360  # Max 6 hours
 
     steps:
-    - name: Install RustDesk Server
+    - name: Install Dependencies
       run: |
-        # Install dependencies
         sudo apt update
-        sudo apt install -y wget unzip xvfb libxcb-randr0-dev libxdo-dev libxfixes-dev libxcb-shape0-dev libxcb-xfixes0-dev
+        sudo apt install -y wget unzip libx11-dev libxext-dev libxrender-dev libxfixes-dev libxtst-dev libxcb1-dev libxkbcommon-dev
         
-        # Download and extract RustDesk
-        wget https://github.com/rustdesk/rustdesk-server/releases/download/1.1.9/rustdesk-server-linux-amd64.zip
-        unzip rustdesk-server-linux-amd64.zip -d rustdesk-server
+    - name: Download and Setup RustDesk Server
+      run: |
+        # Download latest RustDesk server
+        wget https://github.com/rustdesk/rustdesk-server/releases/latest/download/rustdesk-server-linux-amd64.zip -O rustdesk.zip
+        unzip rustdesk.zip -d rustdesk-server
         cd rustdesk-server
+        
+        # Make binaries executable
         chmod +x hbbr hbbs
-
-        # Start RustDesk services
-        nohup ./hbbs -r 0.0.0.0 > hbbs.log 2>&1 &
-        nohup ./hbbr > hbbr.log 2>&1 &
-        sleep 5
+        
+        # Generate encryption key (required for v1.2.0+)
+        ./hbbs --gen-key -k .
+        
+        # Start services with recommended parameters
+        nohup ./hbbs -r 0.0.0.0 -k _ > hbbs.log 2>&1 &
+        nohup ./hbbr -k _ > hbbr.log 2>&1 &
+        sleep 10
+        
+        # Get connection info
+        echo "PUBLIC_KEY=$(cat id_ed25519.pub)" >> $GITHUB_ENV
+        echo "SERVER_ID=$(grep 'ID' hbbs.log | awk '{print $5}')" >> $GITHUB_ENV
 
     - name: Setup Cloudflare Tunnel
       run: |
         cd rustdesk-server
-        # Install cloudflared
         wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
         chmod +x cloudflared
-
-        # Start tunnels for both RustDesk ports
-        nohup ./cloudflared tunnel --url tcp://localhost:21117 --hostname rustdesk-$(openssl rand -hex 4).trycloudflare.com > tunnel1.log 2>&1 &
-        nohup ./cloudflared tunnel --url tcp://localhost:21116 --hostname rustdesk-$(openssl rand -hex 4).trycloudflare.com > tunnel2.log 2>&1 &
+        
+        # Create tunnels for both ports
+        nohup ./cloudflared tunnel --url tcp://localhost:21116 --hostname rustdesk-$(openssl rand -hex 4).trycloudflare.com > tunnel_21116.log 2>&1 &
+        nohup ./cloudflared tunnel --url tcp://localhost:21117 --hostname rustdesk-$(openssl rand -hex 4).trycloudflare.com > tunnel_21117.log 2>&1 &
         sleep 15
+        
+        # Get tunnel URLs
+        echo "TUNNEL_21116_URL=$(grep -o 'https://.*trycloudflare.com' tunnel_21116.log | head -1)" >> $GITHUB_ENV
+        echo "TUNNEL_21117_URL=$(grep -o 'https://.*trycloudflare.com' tunnel_21117.log | head -1)" >> $GITHUB_ENV
 
-        # Get connection info
-        ID=$(grep "ID" hbbs.log | awk '{print $5}')
-        echo "=========================================="
-        echo "🖥️ RUSTDESK SERVER READY"
+    - name: Display Connection Information
+      run: |
+        echo "=============================================="
+        echo "🚀 RUSTDESK SERVER READY (v1.2.0+)"
+        echo "🔑 Server ID: ${{ env.SERVER_ID }}"
+        echo "🔐 Public Key: ${{ env.PUBLIC_KEY }}"
         echo ""
-        echo "🔑 Connection Details:"
-        echo "ID: $ID"
-        echo "Password: (Will be generated on first client connection)"
+        echo "🌐 Connection Endpoints:"
+        echo "ID Server: ${{ env.TUNNEL_21116_URL }}"
+        echo "Relay Server: ${{ env.TUNNEL_21117_URL }}"
         echo ""
-        echo "🌐 Tunnel Addresses:"
-        grep -o "https://.*trycloudflare.com" tunnel*.log | sort | uniq
+        echo "🔧 Client Configuration:"
+        echo "1. Install RustDesk client"
+        echo "2. Go to Settings → Network"
+        echo "3. Set ID Server: ${TUNNEL_21116_URL#https://}"
+        echo "4. Set Relay Server: ${TUNNEL_21117_URL#https://}"
+        echo "5. Add Public Key when prompted"
         echo ""
-        echo "⚠️ Note: Use same tunnel for both ports in RustDesk client"
-        echo "=========================================="
-
-        # Keep alive
+        echo "⚠️ Note: First connection may take 1-2 minutes"
+        echo "=============================================="
+        
+        # Keep session alive
         sleep 6h
