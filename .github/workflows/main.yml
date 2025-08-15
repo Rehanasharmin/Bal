@@ -39,35 +39,34 @@ jobs:
         wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
         chmod +x cloudflared-linux-amd64
         
-        # Create simple domain name (no hyphens)
-        TUNNEL_NAME=rustdesk$(openssl rand -hex 3)
+        # Create simple domain name (letters only)
+        TUNNEL_NAME=rd$(openssl rand -hex 3 | tr -d '0123456789')
         
-        # Start tunnel
+        # Start tunnel with proper TCP mapping
         cd $GITHUB_WORKSPACE/rustdesk-server/amd64
         nohup ~/cloudflared-linux-amd64 tunnel --url tcp://localhost:21116 --hostname ${TUNNEL_NAME}.trycloudflare.com > tunnel.log 2>&1 &
-        sleep 15
+        sleep 20  # Extra time for tunnel setup
 
-        # Get clean tunnel URL
+        # Verify tunnel
         echo "TUNNEL_URL=${TUNNEL_NAME}.trycloudflare.com" >> $GITHUB_ENV
-        echo "FULL_CONNECTION_STRING=${TUNNEL_NAME}.trycloudflare.com:21116" >> $GITHUB_ENV
+        echo "FULL_CONNECTION=tcp://${TUNNEL_NAME}.trycloudflare.com:21116" >> $GITHUB_ENV
 
     - name: Display Connection Info
       run: |
         echo "=========================================="
-        echo "🖥️ RUSTDESK CONNECTION INSTRUCTIONS"
-        echo "🔑 Your Remote ID: ${{ env.REMOTE_ID }}"
-        echo "🌐 Tunnel Address: ${{ env.TUNNEL_URL }}"
-        echo "🔌 Full Connection: ${{ env.FULL_CONNECTION_STRING }}"
+        echo "🖥️ WORKING RUSTDESK CONNECTION"
+        echo "🔑 Remote ID: ${{ env.REMOTE_ID }}"
+        echo "🌐 Tunnel URL: ${{ env.TUNNEL_URL }}"
         echo ""
-        echo "IN YOUR RUSTDESK CLIENT:"
+        echo "IN RUSTDESK CLIENT:"
         echo "1. Go to Settings → Network"
         echo "2. Set BOTH fields to: ${{ env.TUNNEL_URL }}"
-        echo "3. Click OK and restart RustDesk"
-        echo "4. Connect using Remote ID above"
+        echo "3. RESTART RustDesk"
+        echo "4. Connect using the Remote ID above"
         echo ""
         echo "If connection fails:"
-        echo "- Wait 1-2 minutes"
-        echo "- Try again with: ${{ env.FULL_CONNECTION_STRING }}"
+        echo "- Wait 2 minutes after setup"
+        echo "- Try the exact URL: ${{ env.FULL_CONNECTION }}"
         echo "=========================================="
         
         # Keep alive
