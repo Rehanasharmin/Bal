@@ -34,16 +34,18 @@ jobs:
 
     - name: Setup Cloudflare Tunnel
       run: |
-        cd rustdesk-server/amd64
+        # Download cloudflared to proper location
+        cd ~
         wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
-        chmod +x cloudflared
-
-        # Create tunnel for RustDesk ports
-        nohup ./cloudflared tunnel --url tcp://localhost:21116 --hostname rustdesk-$(openssl rand -hex 4).trycloudflare.com > tunnel.log 2>&1 &
-        sleep 10
+        chmod +x cloudflared-linux-amd64
+        
+        # Create tunnel (from RustDesk directory)
+        cd $GITHUB_WORKSPACE/rustdesk-server/amd64
+        nohup ~/cloudflared-linux-amd64 tunnel --url tcp://localhost:21116 --hostname rustdesk-$(openssl rand -hex 4).trycloudflare.com > tunnel.log 2>&1 &
+        sleep 15
 
         # Get tunnel URL
-        TUNNEL_URL=$(grep -o "https://.*trycloudflare.com" tunnel.log)
+        TUNNEL_URL=$(grep -o "https://[a-z0-9-]*\.trycloudflare\.com" tunnel.log)
         echo "TUNNEL_URL=${TUNNEL_URL#https://}" >> $GITHUB_ENV
 
     - name: Display Connection Info
