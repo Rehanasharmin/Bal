@@ -1,4 +1,4 @@
-name: RustDesk Server Setup
+name: RustDesk Server with Cloudflare Tunnel
 
 on:
   workflow_dispatch:
@@ -10,55 +10,56 @@ jobs:
 
     steps:
     - name: Install dependencies
-      run: sudo apt update && sudo apt install -y wget unzip
-
-    - name: Download and setup RustDesk
       run: |
-        # Clean previous runs
+        sudo apt update
+        sudo apt install -y wget unzip
+
+    - name: Setup RustDesk Server
+      run: |
+        # Clean and setup
         rm -rf rustdesk-server || true
-        
-        # Download and extract
         wget https://github.com/rustdesk/rustdesk-server/releases/latest/download/rustdesk-server-linux-amd64.zip
         unzip rustdesk-server-linux-amd64.zip -d rustdesk-server
-        
-        # Navigate to binary directory
         cd rustdesk-server/amd64
         chmod +x hbbr hbbs
-        
-        # Start services (force new key generation)
+
+        # Start services
         nohup ./hbbs -r 0.0.0.0 > hbbs.log 2>&1 &
         nohup ./hbbr > hbbr.log 2>&1 &
-        
-        # Wait for key files to generate
-        echo "Waiting for key generation..."
-        while [ ! -f "id_ed25519.pub" ]; do
-          sleep 1
-        done
-        
-        # Extract Remote ID from public key
+        sleep 5
+
+        # Get ID from key file
         REMOTE_ID=$(head -c 16 id_ed25519.pub | base64 | tr -d '=')
         echo "REMOTE_ID=$REMOTE_ID" >> $GITHUB_ENV
-        echo "PUBLIC_KEY=$(cat id_ed25519.pub)" >> $GITHUB_ENV
-        echo "SERVER_IP=$(curl -s ifconfig.me)" >> $GITHUB_ENV
 
-    - name: Display connection info
+    - name: Setup Cloudflare Tunnel
+      run: |
+        cd rustdesk-server/amd64
+        wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+        chmod +x cloudflared
+
+        # Create tunnel for RustDesk ports
+        nohup ./cloudflared tunnel --url tcp://localhost:21116 --hostname rustdesk-$(openssl rand -hex 4).trycloudflare.com > tunnel.log 2>&1 &
+        sleep 10
+
+        # Get tunnel URL
+        TUNNEL_URL=$(grep -o "https://.*trycloudflare.com" tunnel.log)
+        echo "TUNNEL_URL=${TUNNEL_URL#https://}" >> $GITHUB_ENV
+
+    - name: Display Connection Info
       run: |
         echo "=========================================="
-        echo "🖥️ RUSTDESK SERVER - CONNECTION DETAILS"
-        echo "🔑 YOUR REMOTE ID: ${{ env.REMOTE_ID }}"
-        echo "🔐 Public Key: ${{ env.PUBLIC_KEY }}"
-        echo "🌐 Server IP: ${{ env.SERVER_IP }}"
+        echo "🖥️ RUSTDESK CONNECTION INSTRUCTIONS"
+        echo "🔑 Your Remote ID: ${{ env.REMOTE_ID }}"
+        echo "🌐 Tunnel Address: ${{ env.TUNNEL_URL }}"
         echo ""
-        echo "INSTRUCTIONS:"
-        echo "1. In RustDesk client:"
-        echo "   - Enter this ID: ${{ env.REMOTE_ID }}"
-        echo "   - Password will generate automatically"
-        echo "2. Verify the public key matches when prompted"
+        echo "IN YOUR RUSTDESK CLIENT:"
+        echo "1. Go to Settings → Network"
+        echo "2. Set both ID Server and Relay Server to:"
+        echo "   ${{ env.TUNNEL_URL }}"
+        echo "3. Connect using Remote ID above"
         echo ""
-        echo "For direct connection (if ports are open):"
-        echo "- Set both ID/Relay servers to: ${{ env.SERVER_IP }}"
-        echo ""
-        echo "Session expires after 6 hours"
+        echo "First connection may take 1-2 minutes"
         echo "=========================================="
         
         # Keep alive
