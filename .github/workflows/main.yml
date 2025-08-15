@@ -1,38 +1,40 @@
-name: Ubuntu Terminal with SSH Access
+name: Simple SSH Terminal
 
 on:
-  workflow_dispatch:  # Allows manual triggering
+  workflow_dispatch:  # Run manually
 
 jobs:
-  ubuntu-terminal:
+  ssh-access:
     runs-on: ubuntu-latest
-    timeout-minutes: 360  # Maximum 6 hours
+    timeout-minutes: 360  # Max 6 hours
 
     steps:
-    - name: Set up SSH
+    - name: Start SSH Server
       run: |
-        # Install SSH server
-        sudo apt-get update
-        sudo apt-get install -y openssh-server
-        
-        # Configure SSH
+        sudo apt update
+        sudo apt install -y openssh-server
         sudo mkdir -p /var/run/sshd
-        echo "PermitRootLogin yes" | sudo tee -a /etc/ssh/sshd_config
-        echo "PasswordAuthentication yes" | sudo tee -a /etc/ssh/sshd_config
-        
-        # Set root password (change 'yourpassword' to a secure password)
+
+        # Set password to '1234'
         echo "root:1234" | sudo chpasswd
-        
-        # Start SSH service
-        sudo service ssh start
-        
-        # Print connection information
-        echo "SSH server started"
-        echo "Connect using:"
-        echo "Host: $(curl -s ifconfig.me)"
+
+        # Allow root login with password
+        sudo sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+        sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
+
+        sudo service ssh restart
+
+        # Get public IP
+        IP=$(curl -s ifconfig.me)
+
+        echo "======================================"
+        echo "Connect using Termius:"
+        echo "Host: $IP"
         echo "Port: 22"
         echo "Username: root"
-        echo "Password: yourpassword"
+        echo "Password: 1234"
+        echo "======================================"
+        echo "Note: Will auto-terminate after 6 hours"
         
-        # Keep the container alive
+        # Keep alive
         sleep 6h
