@@ -13,68 +13,41 @@ jobs:
       run: sudo apt update && sudo apt install -y wget unzip
 
     - name: Setup RustDesk Server
-      id: setup
       run: |
-        # Clean previous runs
+        # Clean and setup
         rm -rf rustdesk-server || true
-        
-        # Download and extract
         wget https://github.com/rustdesk/rustdesk-server/releases/latest/download/rustdesk-server-linux-amd64.zip
         unzip rustdesk-server-linux-amd64.zip -d rustdesk-server
-        
-        # Navigate to binary directory
         cd rustdesk-server/amd64
         chmod +x hbbr hbbs
-        
-        # Start services with verbose logging
+
+        # Start services
         nohup ./hbbs -r 0.0.0.0 > hbbs.log 2>&1 &
-        echo $! > hbbs.pid
         nohup ./hbbr > hbbr.log 2>&1 &
-        echo $! > hbbr.pid
-        
-        # Wait for key files to generate
-        echo "Waiting for ID generation..."
-        for i in {1..60}; do
-          if [ -f "id_ed25519.pub" ]; then
-            # Extract ID from public key (first 16 chars of base64)
-            ID=$(head -c 16 id_ed25519.pub | base64 | tr -d '=')
-            echo "SERVER_ID=$ID" >> $GITHUB_ENV
-            echo "PUBLIC_KEY=$(cat id_ed25519.pub)" >> $GITHUB_ENV
-            echo "WORKDIR=$(pwd)" >> $GITHUB_ENV
-            break
-          fi
-          sleep 1
-        done
+        sleep 5
 
-        if [ -z "$ID" ]; then
-          echo "::error::Failed to generate key files"
-          ls -la
-          exit 1
-        fi
+        # Get REAL connection details
+        IP=$(curl -s ifconfig.me)
+        echo "RUSTDESK_IP=$IP" >> $GITHUB_ENV
+        echo "SERVER_ID=$(grep 'ID' hbbs.log 2>/dev/null | tail -1 | awk '{print $NF}' || echo 'NOT_FOUND')" >> $GITHUB_ENV
 
-    - name: Display connection info
+    - name: Display ACTUAL Connection Info
       run: |
-        cd ${{ env.WORKDIR }}
         echo "=========================================="
-        echo "🖥️ RUSTDESK SERVER - CONNECTION DETAILS"
-        echo "🔑 Server ID: ${{ env.SERVER_ID }}"
-        echo "🔐 Public Key: ${{ env.PUBLIC_KEY }}"
+        echo "🖥️ REAL RUSTDESK CONNECTION DETAILS"
         echo ""
-        echo "⚙️ Process Status:"
-        ps aux | grep -E 'hbbs|hbbr' || true
+        echo "IN RUSTDESK CLIENT:"
+        echo "1. Go to Settings → Network"
+        echo "2. Set ID Server to: ${{ env.RUSTDESK_IP }}"
+        echo "3. Set Relay Server to: ${{ env.RUSTDESK_IP }}"
+        echo "4. Click OK and restart RustDesk"
         echo ""
-        echo "📜 Server Logs:"
-        cat hbbs.log || echo "No logs found"
+        echo "Then use this ID to connect: ${{ env.SERVER_ID }}"
         echo ""
-        echo "🌐 Listening Ports:"
-        ss -tulnp | grep -E '21115|21116|21117|21118|21119' || true
+        echo "NOTE: You may need to:"
+        echo "- Open ports 21115-21119 on your firewall"
+        echo "- Wait 1-2 minutes after startup"
         echo "=========================================="
         
-        # Keep alive and monitor processes
-        while sleep 30; do
-          if ! ps -p $(cat hbbs.pid) > /dev/null || ! ps -p $(cat hbbr.pid) > /dev/null; then
-            echo "::error::One or more RustDesk processes crashed"
-            exit 1
-          fi
-          echo "✅ Services still running (PID hbbs:$(cat hbbs.pid), hbbr:$(cat hbbr.pid))"
-        done
+        # Keep alive
+        sleep 6h
