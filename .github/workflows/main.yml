@@ -1,51 +1,54 @@
-name: Termius SSH Access via Ngrok
+name: RustDesk Server via Cloudflare
 
-on:
-  workflow_dispatch:
+on: workflow_dispatch
 
 jobs:
-  ssh-access:
+  rustdesk-server:
     runs-on: ubuntu-latest
     timeout-minutes: 360  # Max 6 hours
 
     steps:
-    - name: Setup SSH with Ngrok Tunnel
+    - name: Install RustDesk Server
       run: |
-        # Install SSH server
+        # Install dependencies
         sudo apt update
-        sudo apt install -y openssh-server curl
-
-        # Configure SSH (password: 1234)
-        echo "root:1234" | sudo chpasswd
-        sudo sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
-        sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
-        sudo service ssh restart
-
-        # Install and configure Ngrok
-        curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
-        echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
-        sudo apt update
-        sudo apt install -y ngrok
-        ngrok config add-authtoken "31DC8doQve7fNPgOlsjWAfbuM0Q_66fcFRHtrX39LPd6oPiY2"
+        sudo apt install -y wget xvfb libxcb-randr0-dev libxdo-dev libxfixes-dev libxcb-shape0-dev libxcb-xfixes0-dev
         
-        # Start TCP tunnel on port 22
-        nohup ngrok tcp 22 > ngrok.log 2>&1 &
-        sleep 10  # Wait for tunnel to establish
+        # Download and install RustDesk
+        wget https://github.com/rustdesk/rustdesk-server/releases/download/1.1.9/rustdesk-server-linux-amd64.zip
+        unzip rustdesk-server-linux-amd64.zip
+        chmod +x hbbr hbbs
 
-        # Get connection details
-        NGROK_URL=$(grep -oE "tcp://(.+)" ngrok.log | head -n 1)
-        HOST=$(echo $NGROK_URL | cut -d':' -f2 | sed 's/\/\///')
-        PORT=$(echo $NGROK_URL | cut -d':' -f3)
+        # Start RustDesk services
+        nohup ./hbbs -r 0.0.0.0 > hbbs.log 2>&1 &
+        nohup ./hbbr > hbbr.log 2>&1 &
+        sleep 5
 
+    - name: Setup Cloudflare Tunnel
+      run: |
+        # Install cloudflared
+        wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+        chmod +x cloudflared
+
+        # Start tunnels for both RustDesk ports
+        nohup ./cloudflared tunnel --url tcp://localhost:21117 --hostname rustdesk-$(openssl rand -hex 4).trycloudflare.com > tunnel1.log 2>&1 &
+        nohup ./cloudflared tunnel --url tcp://localhost:21116 --hostname rustdesk-$(openssl rand -hex 4).trycloudflare.com > tunnel2.log 2>&1 &
+        sleep 15
+
+        # Get connection info
+        ID=$(grep "ID" hbbs.log | awk '{print $5}')
         echo "=========================================="
-        echo "CONNECT USING TERMIUS:"
-        echo "Host: $HOST"
-        echo "Port: $PORT"
-        echo "Username: root"
-        echo "Password: 1234"
+        echo "🖥️ RUSTDESK SERVER READY"
         echo ""
-        echo "Session will auto-end after 6 hours"
+        echo "🔑 Connection Details:"
+        echo "ID: $ID"
+        echo "Password: (Will be generated on first client connection)"
+        echo ""
+        echo "🌐 Tunnel Addresses:"
+        grep -o "https://.*trycloudflare.com" tunnel*.log | sort | uniq
+        echo ""
+        echo "⚠️ Note: Use same tunnel for both ports in RustDesk client"
         echo "=========================================="
 
-        # Keep session alive
+        # Keep alive
         sleep 6h
