@@ -1,40 +1,44 @@
-name: Simple SSH Terminal
+name: Termius Access via Cloudflare Tunnel
 
 on:
-  workflow_dispatch:  # Run manually
+  workflow_dispatch:
 
 jobs:
-  ssh-access:
+  ssh-tunnel:
     runs-on: ubuntu-latest
     timeout-minutes: 360  # Max 6 hours
 
     steps:
-    - name: Start SSH Server
+    - name: Setup SSH and Cloudflared
       run: |
+        # Install SSH and tools
         sudo apt update
-        sudo apt install -y openssh-server
-        sudo mkdir -p /var/run/sshd
-
-        # Set password to '1234'
+        sudo apt install -y openssh-server wget
+        
+        # Set password (1234)
         echo "root:1234" | sudo chpasswd
-
-        # Allow root login with password
-        sudo sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
-        sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
-
+        sudo sed -i 's/#PermitRootLogin prohibit-root/PermitRootLogin yes/' /etc/ssh/sshd_config
         sudo service ssh restart
 
-        # Get public IP
-        IP=$(curl -s ifconfig.me)
-
-        echo "======================================"
-        echo "Connect using Termius:"
-        echo "Host: $IP"
+        # Install Cloudflared (free tunnel)
+        wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O cloudflared
+        chmod +x cloudflared
+        
+        # Create tunnel (random subdomain)
+        TUNNEL_URL=$(openssl rand -hex 8)
+        nohup ./cloudflared tunnel --url ssh://localhost:22 --hostname ${TUNNEL_URL}.trycloudflare.com > tunnel.log 2>&1 &
+        sleep 10  # Wait for tunnel
+        
+        # Get connection info
+        echo "=========================================="
+        echo "SUCCESS! Connect via Termius using:"
+        echo "Host: ${TUNNEL_URL}.trycloudflare.com"
         echo "Port: 22"
         echo "Username: root"
         echo "Password: 1234"
-        echo "======================================"
-        echo "Note: Will auto-terminate after 6 hours"
+        echo ""
+        echo "This will work for 6 hours max"
+        echo "=========================================="
         
         # Keep alive
         sleep 6h
