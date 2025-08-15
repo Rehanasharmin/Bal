@@ -21,33 +21,42 @@ jobs:
         cd rustdesk-server/amd64
         chmod +x hbbr hbbs
 
-        # Start services
-        nohup ./hbbs -r 0.0.0.0 > hbbs.log 2>&1 &
-        nohup ./hbbr > hbbr.log 2>&1 &
-        sleep 5
+        # Start services with debug logging
+        RUST_LOG=debug nohup ./hbbs -r 0.0.0.0 > hbbs.log 2>&1 &
+        RUST_LOG=debug nohup ./hbbr > hbbr.log 2>&1 &
+        
+        # Wait for ID generation
+        for i in {1..30}; do
+          if grep -q "ID" hbbs.log; then
+            REMOTE_ID=$(grep "ID" hbbs.log | tail -1 | awk '{print $NF}')
+            echo "REMOTE_ID=$REMOTE_ID" >> $GITHUB_ENV
+            break
+          fi
+          sleep 1
+        done
 
-        # Get REAL connection details
-        IP=$(curl -s ifconfig.me)
-        echo "RUSTDESK_IP=$IP" >> $GITHUB_ENV
-        echo "SERVER_ID=$(grep 'ID' hbbs.log 2>/dev/null | tail -1 | awk '{print $NF}' || echo 'NOT_FOUND')" >> $GITHUB_ENV
+        # Get public IP
+        echo "SERVER_IP=$(curl -s ifconfig.me)" >> $GITHUB_ENV
 
-    - name: Display ACTUAL Connection Info
+    - name: Display Connection Info
       run: |
         echo "=========================================="
-        echo "🖥️ REAL RUSTDESK CONNECTION DETAILS"
+        echo "🖥️ RUSTDESK CONNECTION INSTRUCTIONS"
         echo ""
-        echo "IN RUSTDESK CLIENT:"
-        echo "1. Go to Settings → Network"
-        echo "2. Set ID Server to: ${{ env.RUSTDESK_IP }}"
-        echo "3. Set Relay Server to: ${{ env.RUSTDESK_IP }}"
-        echo "4. Click OK and restart RustDesk"
+        echo "YOUR REMOTE ID: ${{ env.REMOTE_ID }}"
         echo ""
-        echo "Then use this ID to connect: ${{ env.SERVER_ID }}"
+        echo "IN YOUR RUSTDESK CLIENT:"
+        echo "1. Click 'Remote ID' input box"
+        echo "2. Enter this ID: ${{ env.REMOTE_ID }}"
+        echo "3. Password will generate automatically"
         echo ""
-        echo "NOTE: You may need to:"
-        echo "- Open ports 21115-21119 on your firewall"
+        echo "If connection fails:"
         echo "- Wait 1-2 minutes after startup"
+        echo "- Check full logs below for errors"
         echo "=========================================="
+        echo ""
+        echo "📜 Full Server Logs:"
+        cat rustdesk-server/amd64/hbbs.log || echo "No logs found"
         
         # Keep alive
         sleep 6h
