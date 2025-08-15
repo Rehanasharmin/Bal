@@ -1,4 +1,4 @@
-name: RustDesk Server with Guaranteed ID Display
+name: RustDesk Server Setup
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
 jobs:
   rustdesk-server:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 360  # 6 hour max
 
     steps:
     - name: Install dependencies
@@ -18,27 +18,23 @@ jobs:
         rm -rf rustdesk-server || true
         
         # Download and extract
-        wget -q --show-progress https://github.com/rustdesk/rustdesk-server/releases/latest/download/rustdesk-server-linux-amd64.zip
-        unzip -q rustdesk-server-linux-amd64.zip -d rustdesk-server
+        wget https://github.com/rustdesk/rustdesk-server/releases/latest/download/rustdesk-server-linux-amd64.zip
+        unzip rustdesk-server-linux-amd64.zip -d rustdesk-server
         
         # Navigate to binary directory
         cd rustdesk-server/amd64
         chmod +x hbbr hbbs
         
-        # Generate new keys (important for fresh ID)
-        ./hbbs --gen-key -k .
-        
         # Start services with verbose logging
-        nohup ./hbbs -r 0.0.0.0 -k _ > hbbs.log 2>&1 &
-        nohup ./hbbr -k _ > hbbr.log 2>&1 &
+        nohup ./hbbs -r 0.0.0.0 > hbbs.log 2>&1 &
+        nohup ./hbbr > hbbr.log 2>&1 &
         
         # Wait for ID generation (up to 1 minute)
         echo "Waiting for ID generation..."
         for i in {1..60}; do
-          if [ -f "id_ed25519.pub" ] && grep -q "ID" hbbs.log; then
+          if grep -q "ID" hbbs.log; then
             ID=$(grep "ID" hbbs.log | tail -1 | awk '{print $NF}')
             echo "SERVER_ID=$ID" >> $GITHUB_ENV
-            echo "PUBLIC_KEY=$(cat id_ed25519.pub)" >> $GITHUB_ENV
             break
           fi
           sleep 1
@@ -46,11 +42,10 @@ jobs:
 
         # Final verification
         if [ -z "$ID" ]; then
-          echo "SERVER_ID=ERROR_SEE_FULL_LOGS" >> $GITHUB_ENV
-          echo "PUBLIC_KEY=NOT_GENERATED" >> $GITHUB_ENV
+          echo "SERVER_ID=ERROR_CHECK_LOGS" >> $GITHUB_ENV
           echo "::error::Failed to generate Server ID after 60 seconds"
           cat hbbs.log
-          exit 1
+          exit 0  # Continue to show logs instead of failing
         fi
 
     - name: Display connection info
@@ -58,13 +53,12 @@ jobs:
         echo "=========================================="
         echo "🖥️ RUSTDESK SERVER - CONNECTION DETAILS"
         echo "🔑 Server ID: ${{ env.SERVER_ID }}"
-        echo "🔐 Public Key: ${{ env.PUBLIC_KEY }}"
-        echo ""
-        echo "⚙️ Current Status:"
-        ps aux | grep -E 'hbbs|hbbr'
         echo ""
         echo "📜 Server Logs:"
-        tail -n 20 rustdesk-server/amd64/hbbs.log
+        cat rustdesk-server/amd64/hbbs.log
+        echo ""
+        echo "⚙️ Process Status:"
+        ps aux | grep -E 'hbbs|hbbr'
         echo "=========================================="
         
         # Keep alive
