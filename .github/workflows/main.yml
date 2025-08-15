@@ -1,4 +1,4 @@
-name: RustDesk Server Setup
+name: RustDesk Server with ID Display
 
 on:
   workflow_dispatch:
@@ -12,35 +12,49 @@ jobs:
     - name: Install dependencies
       run: sudo apt update && sudo apt install -y wget unzip
 
-    - name: Download and setup RustDesk
+    - name: Setup RustDesk Server
       run: |
         # Download and extract
         wget https://github.com/rustdesk/rustdesk-server/releases/latest/download/rustdesk-server-linux-amd64.zip
         unzip rustdesk-server-linux-amd64.zip -d rustdesk-server
         
-        # Navigate to correct directory
+        # Navigate to binary directory
         cd rustdesk-server/amd64
-        
-        # Set permissions
         chmod +x hbbr hbbs
         
-        # Start services
+        # Start services with logging
         nohup ./hbbs -r 0.0.0.0 > hbbs.log 2>&1 &
         nohup ./hbbr > hbbr.log 2>&1 &
-        sleep 5
         
-        # Get connection info
-        echo "SERVER_ID=$(grep 'ID' hbbs.log | awk '{print $5}')" >> $GITHUB_ENV
+        # Wait longer for ID generation (up to 30 seconds)
+        for i in {1..30}; do
+          if grep -q "ID" hbbs.log; then
+            break
+          fi
+          sleep 1
+        done
+
+        # Get ID or set default message
+        if grep -q "ID" hbbs.log; then
+          echo "SERVER_ID=$(grep 'ID' hbbs.log | tail -1 | awk '{print $NF}')" >> $GITHUB_ENV
+        else
+          echo "SERVER_ID=ID_NOT_FOUND_CHECK_LOGS" >> $GITHUB_ENV
+        fi
 
     - name: Display connection info
       run: |
-        echo "=============================="
-        echo "🖥️ RustDesk Server Ready"
+        echo "===================================="
+        echo "🖥️ RUSTDESK SERVER INFORMATION"
         echo "🔑 Server ID: ${{ env.SERVER_ID }}"
-        echo "🔒 Password: Will generate on first connect"
         echo ""
-        echo "Note: This is temporary (6 hour max)"
-        echo "=============================="
+        echo "📋 Full connection details:"
+        if [ -f "rustdesk-server/amd64/hbbs.log" ]; then
+          cat rustdesk-server/amd64/hbbs.log | grep -A 5 -B 2 "ID"
+        fi
+        echo ""
+        echo "⚠️ Note: Password generates on first connection"
+        echo "          Session expires after 6 hours"
+        echo "===================================="
         
         # Keep alive
         sleep 6h
