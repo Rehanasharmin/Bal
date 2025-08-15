@@ -1,42 +1,46 @@
-name: Windows RustDesk Temporary Access
+name: RustDesk Server Setup
 
 on:
   workflow_dispatch:
 
 jobs:
-  rustdesk-access:
-    runs-on: windows-latest
-    timeout-minutes: 360  # Max allowed by GitHub
+  rustdesk-server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # 6 hour max
 
     steps:
-    - name: Download RustDesk
-      run: |
-        # Download from official source
-        Invoke-WebRequest -Uri "https://github.com/rustdesk/rustdesk/releases/latest/download/rustdesk-windows_x64.zip" -OutFile rustdesk.zip
-        Expand-Archive -Path rustdesk.zip -DestinationPath .\rustdesk
+    - name: Install dependencies
+      run: sudo apt update && sudo apt install -y wget unzip
 
-    - name: Start RustDesk
-      run: Start-Process -FilePath ".\rustdesk\rustdesk.exe" -ArgumentList "--server"
-
-    - name: Display Connection Info
+    - name: Download and setup RustDesk
       run: |
-        # Wait for credentials to generate
-        Start-Sleep -Seconds 30
+        # Download and extract
+        wget https://github.com/rustdesk/rustdesk-server/releases/latest/download/rustdesk-server-linux-amd64.zip
+        unzip rustdesk-server-linux-amd64.zip -d rustdesk-server
         
-        if (Test-Path ".\rustdesk\config\id.txt") {
-            $ID = Get-Content ".\rustdesk\config\id.txt"
-            $PW = if (Test-Path ".\rustdesk\config\password.txt") { 
-                Get-Content ".\rustdesk\config\password.txt" 
-            } else { "NOT_GENERATED" }
-            
-            echo "============================"
-            echo "TEMPORARY RUSTDESK ACCESS"
-            echo "ID: $ID"
-            echo "Password: $PW"
-            echo ""
-            echo "Note: Will auto-terminate after 6 hours"
-            echo "============================"
-        }
+        # Navigate to correct directory
+        cd rustdesk-server/amd64
         
-        # Keep alive within allowed limits
-        Start-Sleep -Seconds 21420  # 357 minutes (allows cleanup time)
+        # Set permissions
+        chmod +x hbbr hbbs
+        
+        # Start services
+        nohup ./hbbs -r 0.0.0.0 > hbbs.log 2>&1 &
+        nohup ./hbbr > hbbr.log 2>&1 &
+        sleep 5
+        
+        # Get connection info
+        echo "SERVER_ID=$(grep 'ID' hbbs.log | awk '{print $5}')" >> $GITHUB_ENV
+
+    - name: Display connection info
+      run: |
+        echo "=============================="
+        echo "🖥️ RustDesk Server Ready"
+        echo "🔑 Server ID: ${{ env.SERVER_ID }}"
+        echo "🔒 Password: Will generate on first connect"
+        echo ""
+        echo "Note: This is temporary (6 hour max)"
+        echo "=============================="
+        
+        # Keep alive
+        sleep 6h
