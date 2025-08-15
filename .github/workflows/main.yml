@@ -1,75 +1,42 @@
-name: RustDesk Server via Cloudflare
+name: Windows RustDesk Temporary Access
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
 
 jobs:
-  rustdesk-server:
-    runs-on: ubuntu-latest
-    timeout-minutes: 360  # Max 6 hours
+  rustdesk-access:
+    runs-on: windows-latest
+    timeout-minutes: 360  # Max allowed by GitHub
 
     steps:
-    - name: Install Dependencies
+    - name: Download RustDesk
       run: |
-        sudo apt update
-        sudo apt install -y wget unzip libx11-dev libxext-dev libxrender-dev libxfixes-dev libxtst-dev libxcb1-dev libxkbcommon-dev
-        
-    - name: Download and Setup RustDesk Server
-      run: |
-        # Download latest RustDesk server
-        wget https://github.com/rustdesk/rustdesk-server/releases/latest/download/rustdesk-server-linux-amd64.zip -O rustdesk.zip
-        unzip rustdesk.zip -d rustdesk-server
-        cd rustdesk-server
-        
-        # Make binaries executable
-        chmod +x hbbr hbbs
-        
-        # Generate encryption key (required for v1.2.0+)
-        ./hbbs --gen-key -k .
-        
-        # Start services with recommended parameters
-        nohup ./hbbs -r 0.0.0.0 -k _ > hbbs.log 2>&1 &
-        nohup ./hbbr -k _ > hbbr.log 2>&1 &
-        sleep 10
-        
-        # Get connection info
-        echo "PUBLIC_KEY=$(cat id_ed25519.pub)" >> $GITHUB_ENV
-        echo "SERVER_ID=$(grep 'ID' hbbs.log | awk '{print $5}')" >> $GITHUB_ENV
+        # Download from official source
+        Invoke-WebRequest -Uri "https://github.com/rustdesk/rustdesk/releases/latest/download/rustdesk-windows_x64.zip" -OutFile rustdesk.zip
+        Expand-Archive -Path rustdesk.zip -DestinationPath .\rustdesk
 
-    - name: Setup Cloudflare Tunnel
-      run: |
-        cd rustdesk-server
-        wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
-        chmod +x cloudflared
-        
-        # Create tunnels for both ports
-        nohup ./cloudflared tunnel --url tcp://localhost:21116 --hostname rustdesk-$(openssl rand -hex 4).trycloudflare.com > tunnel_21116.log 2>&1 &
-        nohup ./cloudflared tunnel --url tcp://localhost:21117 --hostname rustdesk-$(openssl rand -hex 4).trycloudflare.com > tunnel_21117.log 2>&1 &
-        sleep 15
-        
-        # Get tunnel URLs
-        echo "TUNNEL_21116_URL=$(grep -o 'https://.*trycloudflare.com' tunnel_21116.log | head -1)" >> $GITHUB_ENV
-        echo "TUNNEL_21117_URL=$(grep -o 'https://.*trycloudflare.com' tunnel_21117.log | head -1)" >> $GITHUB_ENV
+    - name: Start RustDesk
+      run: Start-Process -FilePath ".\rustdesk\rustdesk.exe" -ArgumentList "--server"
 
-    - name: Display Connection Information
+    - name: Display Connection Info
       run: |
-        echo "=============================================="
-        echo "🚀 RUSTDESK SERVER READY (v1.2.0+)"
-        echo "🔑 Server ID: ${{ env.SERVER_ID }}"
-        echo "🔐 Public Key: ${{ env.PUBLIC_KEY }}"
-        echo ""
-        echo "🌐 Connection Endpoints:"
-        echo "ID Server: ${{ env.TUNNEL_21116_URL }}"
-        echo "Relay Server: ${{ env.TUNNEL_21117_URL }}"
-        echo ""
-        echo "🔧 Client Configuration:"
-        echo "1. Install RustDesk client"
-        echo "2. Go to Settings → Network"
-        echo "3. Set ID Server: ${TUNNEL_21116_URL#https://}"
-        echo "4. Set Relay Server: ${TUNNEL_21117_URL#https://}"
-        echo "5. Add Public Key when prompted"
-        echo ""
-        echo "⚠️ Note: First connection may take 1-2 minutes"
-        echo "=============================================="
+        # Wait for credentials to generate
+        Start-Sleep -Seconds 30
         
-        # Keep session alive
-        sleep 6h
+        if (Test-Path ".\rustdesk\config\id.txt") {
+            $ID = Get-Content ".\rustdesk\config\id.txt"
+            $PW = if (Test-Path ".\rustdesk\config\password.txt") { 
+                Get-Content ".\rustdesk\config\password.txt" 
+            } else { "NOT_GENERATED" }
+            
+            echo "============================"
+            echo "TEMPORARY RUSTDESK ACCESS"
+            echo "ID: $ID"
+            echo "Password: $PW"
+            echo ""
+            echo "Note: Will auto-terminate after 6 hours"
+            echo "============================"
+        }
+        
+        # Keep alive within allowed limits
+        Start-Sleep -Seconds 21420  # 357 minutes (allows cleanup time)
