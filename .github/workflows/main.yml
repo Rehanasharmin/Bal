@@ -1,44 +1,51 @@
-name: Termius Access via Cloudflare Tunnel
+name: Termius SSH Access via Ngrok
 
 on:
   workflow_dispatch:
 
 jobs:
-  ssh-tunnel:
+  ssh-access:
     runs-on: ubuntu-latest
     timeout-minutes: 360  # Max 6 hours
 
     steps:
-    - name: Setup SSH and Cloudflared
+    - name: Setup SSH with Ngrok Tunnel
       run: |
-        # Install SSH and tools
+        # Install SSH server
         sudo apt update
-        sudo apt install -y openssh-server wget
-        
-        # Set password (1234)
+        sudo apt install -y openssh-server curl
+
+        # Configure SSH (password: 1234)
         echo "root:1234" | sudo chpasswd
-        sudo sed -i 's/#PermitRootLogin prohibit-root/PermitRootLogin yes/' /etc/ssh/sshd_config
+        sudo sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+        sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
         sudo service ssh restart
 
-        # Install Cloudflared (free tunnel)
-        wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O cloudflared
-        chmod +x cloudflared
+        # Install and configure Ngrok
+        curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+        echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+        sudo apt update
+        sudo apt install -y ngrok
+        ngrok config add-authtoken "31DC8doQve7fNPgOlsjWAfbuM0Q_66fcFRHtrX39LPd6oPiY2"
         
-        # Create tunnel (random subdomain)
-        TUNNEL_URL=$(openssl rand -hex 8)
-        nohup ./cloudflared tunnel --url ssh://localhost:22 --hostname ${TUNNEL_URL}.trycloudflare.com > tunnel.log 2>&1 &
-        sleep 10  # Wait for tunnel
-        
-        # Get connection info
+        # Start TCP tunnel on port 22
+        nohup ngrok tcp 22 > ngrok.log 2>&1 &
+        sleep 10  # Wait for tunnel to establish
+
+        # Get connection details
+        NGROK_URL=$(grep -oE "tcp://(.+)" ngrok.log | head -n 1)
+        HOST=$(echo $NGROK_URL | cut -d':' -f2 | sed 's/\/\///')
+        PORT=$(echo $NGROK_URL | cut -d':' -f3)
+
         echo "=========================================="
-        echo "SUCCESS! Connect via Termius using:"
-        echo "Host: ${TUNNEL_URL}.trycloudflare.com"
-        echo "Port: 22"
+        echo "CONNECT USING TERMIUS:"
+        echo "Host: $HOST"
+        echo "Port: $PORT"
         echo "Username: root"
         echo "Password: 1234"
         echo ""
-        echo "This will work for 6 hours max"
+        echo "Session will auto-end after 6 hours"
         echo "=========================================="
-        
-        # Keep alive
+
+        # Keep session alive
         sleep 6h
