@@ -21,7 +21,7 @@ jobs:
         echo "PasswordAuthentication yes" | sudo tee -a /etc/ssh/sshd_config
         
         # Set root password (change 'yourpassword' to a secure password)
-        echo "root:yourpassword" | sudo chpasswd
+        echo "root:1234" | sudo chpasswd
         
         # Start SSH service
         sudo service ssh start
