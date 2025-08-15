@@ -14,49 +14,41 @@ jobs:
 
     - name: Setup RustDesk Server
       run: |
-        # Clean and setup
+        # Clean setup
         rm -rf rustdesk-server || true
+        
+        # Download and extract
         wget https://github.com/rustdesk/rustdesk-server/releases/latest/download/rustdesk-server-linux-amd64.zip
         unzip rustdesk-server-linux-amd64.zip -d rustdesk-server
         cd rustdesk-server/amd64
         chmod +x hbbr hbbs
 
-        # Start services with debug logging
-        RUST_LOG=debug nohup ./hbbs -r 0.0.0.0 > hbbs.log 2>&1 &
-        RUST_LOG=debug nohup ./hbbr > hbbr.log 2>&1 &
+        # Generate new keys (ensures fresh ID)
+        ./hbbs --gen-key -k .
         
-        # Wait for ID generation
-        for i in {1..30}; do
-          if grep -q "ID" hbbs.log; then
-            REMOTE_ID=$(grep "ID" hbbs.log | tail -1 | awk '{print $NF}')
-            echo "REMOTE_ID=$REMOTE_ID" >> $GITHUB_ENV
-            break
-          fi
-          sleep 1
-        done
-
-        # Get public IP
-        echo "SERVER_IP=$(curl -s ifconfig.me)" >> $GITHUB_ENV
+        # Start services with debug logging
+        nohup ./hbbs -r 0.0.0.0 -k _ > hbbs.log 2>&1 &
+        nohup ./hbbr -k _ > hbbr.log 2>&1 &
+        
+        # Get ID from key file (guaranteed to exist)
+        REMOTE_ID=$(cat id_ed25519.pub | base64 | head -c 16)
+        echo "REMOTE_ID=$REMOTE_ID" >> $GITHUB_ENV
+        echo "PUBLIC_KEY=$(cat id_ed25519.pub)" >> $GITHUB_ENV
 
     - name: Display Connection Info
       run: |
         echo "=========================================="
-        echo "🖥️ RUSTDESK CONNECTION INSTRUCTIONS"
+        echo "🖥️ RUSTDESK REMOTE ACCESS"
+        echo "🔑 YOUR REMOTE ID: ${{ env.REMOTE_ID }}"
+        echo "🔐 Public Key: ${{ env.PUBLIC_KEY }}"
         echo ""
-        echo "YOUR REMOTE ID: ${{ env.REMOTE_ID }}"
+        echo "INSTRUCTIONS:"
+        echo "1. In RustDesk client, enter this ID: ${{ env.REMOTE_ID }}"
+        echo "2. Password will generate automatically"
+        echo "3. Verify the public key matches when prompted"
         echo ""
-        echo "IN YOUR RUSTDESK CLIENT:"
-        echo "1. Click 'Remote ID' input box"
-        echo "2. Enter this ID: ${{ env.REMOTE_ID }}"
-        echo "3. Password will generate automatically"
-        echo ""
-        echo "If connection fails:"
-        echo "- Wait 1-2 minutes after startup"
-        echo "- Check full logs below for errors"
+        echo "Note: Session expires after 6 hours"
         echo "=========================================="
-        echo ""
-        echo "📜 Full Server Logs:"
-        cat rustdesk-server/amd64/hbbs.log || echo "No logs found"
         
         # Keep alive
         sleep 6h
