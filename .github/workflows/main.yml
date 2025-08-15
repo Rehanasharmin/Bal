@@ -1,0 +1,38 @@
+name: Ubuntu Terminal with SSH Access
+
+on:
+  workflow_dispatch:  # Allows manual triggering
+
+jobs:
+  ubuntu-terminal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # Maximum 6 hours
+
+    steps:
+    - name: Set up SSH
+      run: |
+        # Install SSH server
+        sudo apt-get update
+        sudo apt-get install -y openssh-server
+        
+        # Configure SSH
+        sudo mkdir -p /var/run/sshd
+        echo "PermitRootLogin yes" | sudo tee -a /etc/ssh/sshd_config
+        echo "PasswordAuthentication yes" | sudo tee -a /etc/ssh/sshd_config
+        
+        # Set root password (change 'yourpassword' to a secure password)
+        echo "root:yourpassword" | sudo chpasswd
+        
+        # Start SSH service
+        sudo service ssh start
+        
+        # Print connection information
+        echo "SSH server started"
+        echo "Connect using:"
+        echo "Host: $(curl -s ifconfig.me)"
+        echo "Port: 22"
+        echo "Username: root"
+        echo "Password: yourpassword"
+        
+        # Keep the container alive
+        sleep 6h
