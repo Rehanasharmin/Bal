@@ -21,15 +21,13 @@ jobs:
         sudo apt-get update
         sudo apt-get clean
 
-        # Add the AnyDesk GPG key to the system.
+        # Add the AnyDesk GPG key and repository.
         sudo apt install -y ca-certificates curl apt-transport-https
         sudo install -m 0755 -d /etc/apt/keyrings
         curl -fsSL https://keys.anydesk.com/repos/DEB-GPG-KEY | sudo gpg --dearmor -o /etc/apt/keyrings/keys.anydesk.com.gpg
-
-        # Add the AnyDesk repository to the APT sources.
         echo "deb [signed-by=/etc/apt/keyrings/keys.anydesk.com.gpg] http://deb.anydesk.com all main" | sudo tee /etc/apt/sources.list.d/anydesk-stable.list > /dev/null
 
-        # Update APT caches and install the latest AnyDesk client.
+        # Update APT caches and install AnyDesk and XFCE.
         sudo apt update
         sudo apt install -y anydesk xfce4 desktop-base dbus-x11 xscreensaver xvfb
 
@@ -40,12 +38,17 @@ jobs:
         # Start XFCE in the background.
         /usr/bin/xvfb-run --server-num=99 --listen-tcp -l -f -a --server-args="-screen 0 1024x768x24" xfce4-session &
 
-        # Stop the AnyDesk service to prevent interference.
+        # Stop the AnyDesk service to prevent interference during configuration.
         sudo service anydesk stop
 
-        # Create the AnyDesk password file directly.
-        echo "$ANYDESK_PASSWORD" > anydesk.pass
+        # Manually create the necessary .anydesk directory for the runner user.
+        mkdir -p ~/.anydesk
+
+        # Use the `anydesk --gen-pass` command to generate the password hash and store it correctly.
+        # This will now succeed as the directory exists.
         echo "$ANYDESK_PASSWORD" | anydesk --gen-pass --with-pw-salt > ~/.anydesk/service.conf
+
+        # Copy the runner user's config to the system-wide location.
         sudo cp ~/.anydesk/service.conf /etc/anydesk/
 
         # Enable unattended access in the AnyDesk configuration.
