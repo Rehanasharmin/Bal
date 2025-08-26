@@ -1,47 +1,24 @@
-name: XFCE Remote Desktop
-on:
-  workflow_dispatch:
-    inputs:
-      pin:
-        description: '6-digit PIN for Chrome Remote Desktop'
-        required: true
-      code:
-        description: 'Authorization code from Chrome Remote Desktop (https://remotedesktop.google.com/headless)'
-        required: true
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Install XFCE and Chrome Remote Desktop
+    - name: Configure APT sources and install software
       run: |
-        # Install XFCE desktop and basic components.
-        sudo DEBIAN_FRONTEND=noninteractive apt install --assume-yes xfce4 desktop-base dbus-x11 xscreensaver
-        # XScreenSaver is used because Light Locker can cause a blank screen.
+        # 1. Temporarily replace the sources.list with the official Ubuntu servers
+        # This resolves the `mirror+file` issue by ignoring the custom mirror setup.
+        sudo sh -c 'echo "deb http://archive.ubuntu.com/ubuntu/ $(lsb_release -cs) main universe" > /etc/apt/sources.list'
 
-        # Download and install the Chrome Remote Desktop package.
+        # 2. Update the package list to use the new sources
+        sudo apt-get update
+
+        # 3. Clean the APT cache to remove any corrupted or outdated packages
+        sudo apt-get clean
+
+        # 4. Force installation of missing dependencies
+        sudo apt-get install --fix-missing -y
+
+        # 5. Install XFCE and other required components
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y xfce4 desktop-base dbus-x11 xscreensaver
+
+        # 6. Install Chrome Remote Desktop
         wget https://dl.google.com/linux/direct/chrome-remote-desktop_current_amd64.deb
-        sudo apt install --assume-yes ./chrome-remote-desktop_current_amd64.deb
+        sudo apt-get install --assume-yes ./chrome-remote-desktop_current_amd64.deb
 
-        # Configure Chrome Remote Desktop to use the XFCE session.
+        # 7. Configure Chrome Remote Desktop to use the XFCE session
         sudo bash -c 'echo "exec /etc/X11/Xsession /usr/bin/xfce4-session" > /etc/chrome-remote-desktop-session'
-        
-    - name: Start Chrome Remote Desktop and get connection info
-      run: |
-        # Run the command with your pin and authorization code to start the service.
-        DISPLAY= /opt/google/chrome-remote-desktop/start-host --code="${{ github.event.inputs.code }}" --pin="${{ github.event.inputs.pin }}" &> /dev/null
-        
-        echo "Chrome Remote Desktop is running. The session will be available for approximately 6 hours."
-        echo "Go to https://remotedesktop.google.com/access and find the new machine in your list."
-        
-    - name: Keep the job alive
-      run: |
-        # Use a `sleep` command to keep the job running. The job will terminate after about 6 hours.
-        # Press Ctrl+C in the terminal to kill the process and end the session early.
-        echo "Keeping the session alive for 6 hours. End the workflow run to terminate the session."
-        sleep 21600
-
