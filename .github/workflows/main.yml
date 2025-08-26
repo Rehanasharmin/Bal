@@ -37,16 +37,28 @@ jobs:
         sudo bash -c 'echo "exec /etc/X11/Xsession /usr/bin/xfce4-session" > /etc/chrome-remote-desktop-session'
         
     - name: Start Chrome Remote Desktop and get connection info
+      id: start_crd
       run: |
-        # Run the command with your pin and authorization code to start the service.
-        DISPLAY= /opt/google/chrome-remote-desktop/start-host --code="${{ github.event.inputs.code }}" --pin="${{ github.event.inputs.pin }}" &> /dev/null
+        # Run the command and capture stderr for troubleshooting.
+        # The '&>' redirects both stdout and stderr to the specified file.
+        # This will reveal why the start-host command fails.
+        /opt/google/chrome-remote-desktop/start-host --code="${{ github.event.inputs.code }}" --pin="${{ github.event.inputs.pin }}" &> start_crd_output.log || true
         
+        # Check if the process completed successfully
+        if grep -q "Started remoting on behalf of" start_crd_output.log; then
+          echo "Chrome Remote Desktop started successfully."
+        else
+          echo "Chrome Remote Desktop failed to start. See logs below:"
+          cat start_crd_output.log
+          exit 1
+        fi
+
         echo "Chrome Remote Desktop is running. The session will be available for approximately 6 hours."
         echo "Go to https://remotedesktop.google.com/access and find the new machine in your list."
         
     - name: Keep the job alive
       run: |
         # Use a `sleep` command to keep the job running. The job will terminate after about 6 hours.
-        # Press Ctrl+C in the terminal to kill the process and end the session early.
+        # End the workflow run to terminate the session.
         echo "Keeping the session alive for 6 hours. End the workflow run to terminate the session."
         sleep 21600
