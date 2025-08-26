@@ -40,8 +40,19 @@ jobs:
         # Start XFCE in the background.
         /usr/bin/xvfb-run --server-num=99 --listen-tcp -l -f -a --server-args="-screen 0 1024x768x24" xfce4-session &
 
-        # Set the AnyDesk password for unattended access.
-        echo "$ANYDESK_PASSWORD" | sudo anydesk --set-password
+        # Stop the AnyDesk service to prevent interference.
+        sudo service anydesk stop
+
+        # Create the AnyDesk password file directly.
+        echo "$ANYDESK_PASSWORD" > anydesk.pass
+        echo "$ANYDESK_PASSWORD" | anydesk --gen-pass --with-pw-salt > ~/.anydesk/service.conf
+        sudo cp ~/.anydesk/service.conf /etc/anydesk/
+
+        # Enable unattended access in the AnyDesk configuration.
+        sudo sed -i 's/#ad.security.enabled=false/ad.security.enabled=true/' /etc/anydesk/service.conf
+
+        # Restart the AnyDesk service.
+        sudo service anydesk start
 
         # Wait for AnyDesk to generate an ID and register with the service.
         sleep 10
