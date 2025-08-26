@@ -1,64 +1,52 @@
-name: XFCE Remote Desktop
+name: XFCE AnyDesk Remote Desktop
 on:
   workflow_dispatch:
     inputs:
-      pin:
-        description: '6-digit PIN for Chrome Remote Desktop'
-        required: true
-      code:
-        description: 'Authorization code from Chrome Remote Desktop (https://remotedesktop.google.com/headless)'
+      anydesk_password:
+        description: 'AnyDesk Password for Unattended Access'
         required: true
 
 jobs:
-  build:
+  remote-desktop:
     runs-on: ubuntu-latest
-
+    
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
 
     - name: Configure APT sources and install software
       run: |
-        # Temporarily replace the APT sources.list with the official Ubuntu servers to fix mirror issues.
+        # Use official Ubuntu mirrors to prevent 404 errors.
         sudo sh -c 'echo "deb http://archive.ubuntu.com/ubuntu/ $(lsb_release -cs) main universe" > /etc/apt/sources.list'
-
-        # Update package list and clean cache to prepare for installation.
         sudo apt-get update
         sudo apt-get clean
 
-        # Force installation of missing dependencies and the required packages.
-        sudo apt-get install --fix-missing -y xfce4 desktop-base dbus-x11 xscreensaver
+        # Install AnyDesk and XFCE environment packages.
+        sudo apt-get install --fix-missing -y xfce4 desktop-base dbus-x11 xscreensaver xvfb
+        wget https://download.anydesk.com/linux/anydesk_6.3.0-1_amd64.deb # Replace with latest version if needed
+        sudo apt-get install --assume-yes ./anydesk_6.3.0-1_amd64.deb
 
-        # Download and install the Chrome Remote Desktop package.
-        wget https://dl.google.com/linux/direct/chrome-remote-desktop_current_amd64.deb
-        sudo apt-get install --assume-yes ./chrome-remote-desktop_current_amd64.deb
-
-        # Configure Chrome Remote Desktop to use the XFCE session.
-        sudo bash -c 'echo "exec /etc/X11/Xsession /usr/bin/xfce4-session" > /etc/chrome-remote-desktop-session'
-        
-    - name: Start Chrome Remote Desktop and get connection info
-      id: start_crd
+    - name: Start XFCE and configure AnyDesk
+      env:
+        ANYDESK_PASSWORD: ${{ github.event.inputs.anydesk_password }}
       run: |
-        # Run the command and capture stderr for troubleshooting.
-        # The '&>' redirects both stdout and stderr to the specified file.
-        # This will reveal why the start-host command fails.
-        /opt/google/chrome-remote-desktop/start-host --code="${{ github.event.inputs.code }}" --pin="${{ github.event.inputs.pin }}" &> start_crd_output.log || true
-        
-        # Check if the process completed successfully
-        if grep -q "Started remoting on behalf of" start_crd_output.log; then
-          echo "Chrome Remote Desktop started successfully."
-        else
-          echo "Chrome Remote Desktop failed to start. See logs below:"
-          cat start_crd_output.log
-          exit 1
-        fi
+        # Start XFCE in the background.
+        /usr/bin/xvfb-run --server-num=99 --listen-tcp -l -f -a --server-args="-screen 0 1024x768x24" xfce4-session &
 
-        echo "Chrome Remote Desktop is running. The session will be available for approximately 6 hours."
-        echo "Go to https://remotedesktop.google.com/access and find the new machine in your list."
+        # Set the AnyDesk password for unattended access.
+        # This requires root privileges.
+        echo "$ANYDESK_PASSWORD" | sudo anydesk --set-password
+
+        # Wait for AnyDesk to generate an ID and register with the service.
+        sleep 10
+        
+        # Get and display the AnyDesk ID.
+        ANYDESK_ID=$(anydesk --get-id)
+        echo "AnyDesk ID for this session: $ANYDESK_ID"
+        echo "Connect using the AnyDesk ID and the password you provided."
         
     - name: Keep the job alive
       run: |
         # Use a `sleep` command to keep the job running. The job will terminate after about 6 hours.
-        # End the workflow run to terminate the session.
         echo "Keeping the session alive for 6 hours. End the workflow run to terminate the session."
         sleep 21600
