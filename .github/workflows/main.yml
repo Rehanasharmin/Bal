@@ -21,10 +21,17 @@ jobs:
         sudo apt-get update
         sudo apt-get clean
 
-        # Install AnyDesk and XFCE environment packages.
-        sudo apt-get install --fix-missing -y xfce4 desktop-base dbus-x11 xscreensaver xvfb
-        wget https://download.anydesk.com/linux/anydesk_6.3.0-1_amd64.deb # Replace with latest version if needed
-        sudo apt-get install --assume-yes ./anydesk_6.3.0-1_amd64.deb
+        # Add the AnyDesk GPG key to the system.
+        sudo apt install -y ca-certificates curl apt-transport-https
+        sudo install -m 0755 -d /etc/apt/keyrings
+        curl -fsSL https://keys.anydesk.com/repos/DEB-GPG-KEY | sudo gpg --dearmor -o /etc/apt/keyrings/keys.anydesk.com.gpg
+
+        # Add the AnyDesk repository to the APT sources.
+        echo "deb [signed-by=/etc/apt/keyrings/keys.anydesk.com.gpg] http://deb.anydesk.com all main" | sudo tee /etc/apt/sources.list.d/anydesk-stable.list > /dev/null
+
+        # Update APT caches and install the latest AnyDesk client.
+        sudo apt update
+        sudo apt install -y anydesk xfce4 desktop-base dbus-x11 xscreensaver xvfb
 
     - name: Start XFCE and configure AnyDesk
       env:
@@ -34,7 +41,6 @@ jobs:
         /usr/bin/xvfb-run --server-num=99 --listen-tcp -l -f -a --server-args="-screen 0 1024x768x24" xfce4-session &
 
         # Set the AnyDesk password for unattended access.
-        # This requires root privileges.
         echo "$ANYDESK_PASSWORD" | sudo anydesk --set-password
 
         # Wait for AnyDesk to generate an ID and register with the service.
@@ -47,6 +53,6 @@ jobs:
         
     - name: Keep the job alive
       run: |
-        # Use a `sleep` command to keep the job running. The job will terminate after about 6 hours.
+        # Use a `sleep` command to keep the job running.
         echo "Keeping the session alive for 6 hours. End the workflow run to terminate the session."
         sleep 21600
