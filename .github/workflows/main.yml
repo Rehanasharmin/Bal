@@ -21,13 +21,15 @@ jobs:
         sudo apt-get update
         sudo apt-get clean
 
-        # Add the AnyDesk GPG key and repository.
+        # Add the AnyDesk GPG key to the system.
         sudo apt install -y ca-certificates curl apt-transport-https
         sudo install -m 0755 -d /etc/apt/keyrings
         curl -fsSL https://keys.anydesk.com/repos/DEB-GPG-KEY | sudo gpg --dearmor -o /etc/apt/keyrings/keys.anydesk.com.gpg
+
+        # Add the AnyDesk repository to the APT sources.
         echo "deb [signed-by=/etc/apt/keyrings/keys.anydesk.com.gpg] http://deb.anydesk.com all main" | sudo tee /etc/apt/sources.list.d/anydesk-stable.list > /dev/null
 
-        # Update APT caches and install AnyDesk and XFCE.
+        # Update APT caches and install the latest AnyDesk client.
         sudo apt update
         sudo apt install -y anydesk xfce4 desktop-base dbus-x11 xscreensaver xvfb
 
@@ -38,12 +40,19 @@ jobs:
         # Start XFCE in the background.
         /usr/bin/xvfb-run --server-num=99 --listen-tcp -l -f -a --server-args="-screen 0 1024x768x24" xfce4-session &
 
-        # Set the AnyDesk password for unattended access.
-        # This writes directly to the service configuration file with sudo.
-        sudo anydesk --set-password <<EOF
-${ANYDESK_PASSWORD}
-${ANYDESK_PASSWORD}
-EOF
+        # Stop the AnyDesk service to prevent interference.
+        sudo service anydesk stop
+
+        # Create the AnyDesk password file directly.
+        echo "$ANYDESK_PASSWORD" > anydesk.pass
+        echo "$ANYDESK_PASSWORD" | anydesk --gen-pass --with-pw-salt > ~/.anydesk/service.conf
+        sudo cp ~/.anydesk/service.conf /etc/anydesk/
+
+        # Enable unattended access in the AnyDesk configuration.
+        sudo sed -i 's/#ad.security.enabled=false/ad.security.enabled=true/' /etc/anydesk/service.conf
+
+        # Restart the AnyDesk service.
+        sudo service anydesk start
 
         # Wait for AnyDesk to generate an ID and register with the service.
         sleep 10
