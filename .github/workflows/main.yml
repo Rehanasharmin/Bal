@@ -38,9 +38,20 @@ jobs:
         # Start XFCE in the background.
         /usr/bin/xvfb-run --server-num=99 --listen-tcp -l -f -a --server-args="-screen 0 1024x768x24" xfce4-session &
 
-        # Set the AnyDesk password for unattended access reliably.
-        # This sends the password to the command via standard input.
-        echo "$ANYDESK_PASSWORD" | anydesk --set-password
+        # Stop the AnyDesk service to prevent interference.
+        sudo service anydesk stop
+
+        # Manually create and update the password hash in the service configuration.
+        # The password needs to be properly escaped for the sed command.
+        # This is a very reliable way to set the password in a headless environment.
+        HASH=$(echo -n "$ANYDESK_PASSWORD" | anydesk --gen-pass --with-pw-salt)
+        sudo sed -i "s|#ad.security.password_hash=.*|ad.security.password_hash=$HASH|" /etc/anydesk/service.conf
+
+        # Enable unattended access in the AnyDesk configuration.
+        sudo sed -i 's/#ad.security.enabled=false/ad.security.enabled=true/' /etc/anydesk/service.conf
+
+        # Restart the AnyDesk service.
+        sudo service anydesk start
 
         # Wait for AnyDesk to generate an ID and register with the service.
         sleep 10
