@@ -1,68 +1,43 @@
-name: XFCE AnyDesk Remote Desktop
+name: RustDesk Access
+
 on:
   workflow_dispatch:
-    inputs:
-      anydesk_password:
-        description: 'AnyDesk Password for Unattended Access'
-        required: true
 
 jobs:
-  remote-desktop:
-    runs-on: ubuntu-latest
-    
+  rustdesk-session:
+    runs-on: self-hosted  # Use the self-hosted runner
+
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Configure APT sources and install software
-      run: |
-        # Use official Ubuntu mirrors to prevent 404 errors.
-        sudo sh -c 'echo "deb http://archive.ubuntu.com/ubuntu/ $(lsb_release -cs) main universe" > /etc/apt/sources.list'
-        sudo apt-get update
-        sudo apt-get clean
-
-        # Add the AnyDesk GPG key and repository.
-        sudo apt install -y ca-certificates curl apt-transport-https
-        sudo install -m 0755 -d /etc/apt/keyrings
-        curl -fsSL https://keys.anydesk.com/repos/DEB-GPG-KEY | sudo gpg --dearmor -o /etc/apt/keyrings/keys.anydesk.com.gpg
-        echo "deb [signed-by=/etc/apt/keyrings/keys.anydesk.com.gpg] http://deb.anydesk.com all main" | sudo tee /etc/apt/sources.list.d/anydesk-stable.list > /dev/null
-
-        # Update APT caches and install AnyDesk and XFCE.
-        sudo apt update
-        sudo apt install -y anydesk xfce4 desktop-base dbus-x11 xscreensaver xvfb
-
-    - name: Start XFCE and configure AnyDesk
-      env:
-        ANYDESK_PASSWORD: ${{ github.event.inputs.anydesk_password }}
-      run: |
-        # Start XFCE in the background.
-        /usr/bin/xvfb-run --server-num=99 --listen-tcp -l -f -a --server-args="-screen 0 1024x768x24" xfce4-session &
-
-        # Stop the AnyDesk service to prevent interference.
-        sudo service anydesk stop
-
-        # Manually create and update the password hash in the service configuration.
-        # The password needs to be properly escaped for the sed command.
-        # This is a very reliable way to set the password in a headless environment.
-        HASH=$(echo -n "$ANYDESK_PASSWORD" | anydesk --gen-pass --with-pw-salt)
-        sudo sed -i "s|#ad.security.password_hash=.*|ad.security.password_hash=$HASH|" /etc/anydesk/service.conf
-
-        # Enable unattended access in the AnyDesk configuration.
-        sudo sed -i 's/#ad.security.enabled=false/ad.security.enabled=true/' /etc/anydesk/service.conf
-
-        # Restart the AnyDesk service.
-        sudo service anydesk start
-
-        # Wait for AnyDesk to generate an ID and register with the service.
-        sleep 10
-        
-        # Get and display the AnyDesk ID.
-        ANYDESK_ID=$(anydesk --get-id)
-        echo "AnyDesk ID for this session: $ANYDESK_ID"
-        echo "Connect using the AnyDesk ID and the password you provided."
-        
-    - name: Keep the job alive
-      run: |
-        # Use a `sleep` command to keep the job running.
-        echo "Keeping the session alive for 6 hours. End the workflow run to terminate the session."
-        sleep 21600
+      - name: Start XFCE and RustDesk session
+        env:
+          # Use a GitHub secret for the RustDesk password
+          RUSTDESK_PASSWORD: ${{ secrets.RUSTDESK_PASSWORD }}
+        run: |
+          # Start a virtual display for the graphical session
+          nohup dbus-launch xfce4-session > /dev/null 2>&1 &
+          
+          # Wait for XFCE to start
+          sleep 10
+          
+          # Set the RustDesk password from a GitHub Secret
+          # Note: The command-line option for setting the password may vary
+          #       by version. This is an example.
+          rustdesk --password $RUSTDESK_PASSWORD
+          
+          # Start RustDesk in headless mode, assuming it connects to the XFCE session
+          # The exact command may need adjustment based on RustDesk version/config
+          nohup rustdesk --start > /dev/null 2>&1 &
+          
+          # Retrieve and display the RustDesk ID. This is the main challenge.
+          # The location of the ID file may vary.
+          RUSTDESK_ID=$(rustdesk --get-id)
+          echo "Your RustDesk ID is: $RUSTDESK_ID"
+          echo "Please connect using this ID and your pre-set password."
+          
+          # Keep the job running for a limited time to allow a connection
+          # You can cancel the job manually from the Actions tab when you are finished.
+          echo "Session will remain active for 30 minutes. You can cancel manually."
+          sleep 1800 # 30 minutes
